@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
 using System.Dynamic;
 using Jint.Native.Array;
 using Jint.Native.Boolean;
@@ -67,67 +66,56 @@ namespace Jint.Native
 
         private readonly Types _type;
 
-        [Pure]
         public bool IsPrimitive()
         {
             return _type != Types.Object && _type != Types.None;
         }
 
-        [Pure]
         public bool IsUndefined()
         {
             return _type == Types.Undefined;
         }
 
-        [Pure]
         public bool IsArray()
         {
             return IsObject() && AsObject() is ArrayInstance;
         }
 
-        [Pure]
         public bool IsDate()
         {
             return IsObject() && AsObject() is DateInstance;
         }
 
-        [Pure]
         public bool IsRegExp()
         {
             return IsObject() && AsObject() is RegExpInstance;
         }
 
-        [Pure]
         public bool IsObject()
         {
             return _type == Types.Object;
         }
 
-        [Pure]
         public bool IsString()
         {
             return _type == Types.String;
         }
 
-        [Pure]
         public bool IsNumber()
         {
             return _type == Types.Number;
         }
 
-        [Pure]
         public bool IsBoolean()
         {
             return _type == Types.Boolean;
         }
 
-        [Pure]
         public bool IsNull()
         {
             return _type == Types.Null;
         }
 
-        [Pure]
         public ObjectInstance AsObject()
         {
             if (_type != Types.Object)
@@ -138,7 +126,6 @@ namespace Jint.Native
             return _object as ObjectInstance;
         }
 
-        [Pure]
         public ArrayInstance AsArray()
         {
             if (!IsArray())
@@ -149,7 +136,6 @@ namespace Jint.Native
             return _object as ArrayInstance;
         }
 
-        [Pure]
         public DateInstance AsDate()
         {
             if (!IsDate())
@@ -160,7 +146,6 @@ namespace Jint.Native
             return _object as DateInstance;
         }
 
-        [Pure]
         public RegExpInstance AsRegExp()
         {
             if (!IsRegExp())
@@ -171,7 +156,6 @@ namespace Jint.Native
             return _object as RegExpInstance;
         }
 
-        [Pure]
         public T TryCast<T>(Action<JsValue> fail = null) where T : class
         {
             if (IsObject())
@@ -202,7 +186,6 @@ namespace Jint.Native
             return _object as T;
         }
 
-        [Pure]
         public bool AsBoolean()
         {
             if (_type != Types.Boolean)
@@ -213,7 +196,6 @@ namespace Jint.Native
             return _double != 0;
         }
 
-        [Pure]
         public string AsString()
         {
             if (_type != Types.String)
@@ -229,7 +211,6 @@ namespace Jint.Native
             return _object as string;
         }
 
-        [Pure]
         public double AsNumber()
         {
             if (_type != Types.Number)

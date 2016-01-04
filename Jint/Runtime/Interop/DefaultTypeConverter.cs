@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Linq.Expressions;
 using Jint.Native;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using Microsoft.Scripting.Ast;
 
 namespace Jint.Runtime.Interop
 {
@@ -72,6 +72,7 @@ namespace Jint.Runtime.Interop
                         {
                             @params[i] = Expression.Parameter(genericArguments[i], genericArguments[i].Name + i);
                         }
+
                         var tmpVars = new Expression[@params.Length];
                         for (var i = 0; i < @params.Count(); i++)
                         {
@@ -112,7 +113,7 @@ namespace Jint.Runtime.Interop
                             Expression.NewArrayInit(typeof(JsValue), 
                                 @params.Select(p => {
                                     var boxingExpression = Expression.Convert(p, typeof(object));
-                                    return Expression.Call(null, jsValueFromObject, Expression.Constant(_engine, typeof(Engine)), boxingExpression);
+                                    return (Expression)Expression.Call(null, jsValueFromObject, Expression.Constant(_engine, typeof(Engine)), boxingExpression);
                                 })
                             );
 
@@ -152,7 +153,7 @@ namespace Jint.Runtime.Interop
                         {
                             @params[i] = Expression.Parameter(typeof(object), arguments[i].Name);
                         }
-                        var @vars = Expression.NewArrayInit(typeof(JsValue), @params.Select(p => Expression.Call(null, typeof(JsValue).GetMethod("FromObject"), Expression.Constant(_engine, typeof(Engine)), p)));
+                        var @vars = Expression.NewArrayInit(typeof(JsValue), @params.Select(p => (Expression)Expression.Call(null, typeof(JsValue).GetMethod("FromObject"), Expression.Constant(_engine, typeof(Engine)), p)));
 
                         var callExpression = Expression.Block(
                                                 Expression.Call(
@@ -163,7 +164,7 @@ namespace Jint.Runtime.Interop
                                                     typeof(JsValue).GetMethod("ToObject")),
                                                 Expression.Empty());
 
-                        var dynamicExpression = Expression.Invoke(Expression.Lambda(callExpression, new ReadOnlyCollection<ParameterExpression>(@params)), new ReadOnlyCollection<ParameterExpression>(@params));
+                        var dynamicExpression = Expression.Invoke(Expression.Lambda(callExpression, new ReadOnlyCollection<ParameterExpression>(@params)), new ReadOnlyCollection<Expression>(@params));
 
                         return Expression.Lambda(type, dynamicExpression, new ReadOnlyCollection<ParameterExpression>(@params));
                     }

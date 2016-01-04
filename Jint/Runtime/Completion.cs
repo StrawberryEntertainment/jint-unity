@@ -20,6 +20,14 @@ namespace Jint.Runtime
             Identifier = identifier;
         }
 
+        public Completion(string type, JsValue? value, string identifier, Parser.Location location)
+        {
+            Type = type;
+            Value = value;
+            Identifier = identifier;
+            Location = location;
+        }
+
         public string Type { get; private set; }
         public JsValue? Value { get; private set; }
         public string Identifier { get; private set; }

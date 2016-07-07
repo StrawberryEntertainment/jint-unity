@@ -84,6 +84,12 @@ namespace Jint
             return this;
         }
 
+        public Options AddLookupAssemblies(params Assembly[] assemblies) {
+            _lookupAssemblies.AddRange(assemblies);
+            _lookupAssemblies = _lookupAssemblies.Distinct().ToList();
+            return this;
+        }
+
         public Options MaxStatements(int maxStatements = 0)
         {
             _maxStatements = maxStatements;

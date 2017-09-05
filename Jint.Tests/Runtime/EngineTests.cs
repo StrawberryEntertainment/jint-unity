@@ -24,6 +24,7 @@ namespace Jint.Tests.Runtime
             _engine = new Engine()
                 .SetValue("log", new Action<object>(Console.WriteLine))
                 .SetValue("assert", new Action<bool>(Assert.True))
+                .SetValue("equal", new Action<object, object>(Assert.Equal))
                 ;
         }
 
@@ -37,22 +38,20 @@ namespace Jint.Tests.Runtime
             _engine.Execute(source);
         }
 
-        [Theory]
-        [InlineData("Scratch.js")]
-        public void ShouldInterpretScriptFile(string file)
+        private string GetEmbeddedFile(string filename)
         {
             const string prefix = "Jint.Tests.Runtime.Scripts.";
 
-            var assembly = Assembly.GetExecutingAssembly();
-            var scriptPath = prefix + file;
+            var assembly = typeof(EngineTests).GetTypeInfo().Assembly;
+            var scriptPath = prefix + filename;
 
             using (var stream = assembly.GetManifestResourceStream(scriptPath))
-                if (stream != null)
-                    using (var sr = new StreamReader(stream))
-                    {
-                        var source = sr.ReadToEnd();
-                        RunTest(source);
-                    }
+            {
+                using (var sr = new StreamReader(stream))
+                {
+                    return sr.ReadToEnd();
+                }
+            }
         }
 
         [Theory]
@@ -167,7 +166,7 @@ namespace Jint.Tests.Runtime
                 function Body(mass){
                    this.mass = mass;
                 }
-                
+
                 var john = new Body(36);
                 assert(john.mass == 36);
             ");
@@ -375,7 +374,7 @@ namespace Jint.Tests.Runtime
                 assert(void 0 === undefined);
                 var x = '1';
                 assert(void x === undefined);
-                x = 'x'; 
+                x = 'x';
                 assert (isNaN(void x) === true);
                 x = new String('-1');
                 assert (void x === undefined);
@@ -407,7 +406,7 @@ namespace Jint.Tests.Runtime
         public void NaNIsNan()
         {
             RunTest(@"
-                var x = NaN; 
+                var x = NaN;
                 assert(isNaN(NaN));
                 assert(isNaN(Math.abs(x)));
             ");
@@ -434,7 +433,7 @@ namespace Jint.Tests.Runtime
                     return x;
                   };
                   return f2();
-  
+
                   var x = 1;
                 }
 
@@ -459,8 +458,18 @@ namespace Jint.Tests.Runtime
                 for(var z in this) {
                     str += z;
                 }
-                
+
                 assert(str == 'xystrz');
+            ");
+        }
+
+        [Fact]
+        public void ForInStatementEnumeratesKeys()
+        {
+            RunTest(@"
+                for(var i in 'abc');
+				log(i);
+                assert(i === '2');
             ");
         }
 
@@ -531,7 +540,7 @@ namespace Jint.Tests.Runtime
                     assert(x == 1);
                     z = 1;
                 }
-                
+
                 assert(x == 1);
                 assert(y == 1);
                 assert(z == 1);
@@ -617,7 +626,7 @@ namespace Jint.Tests.Runtime
                 () => new Engine(cfg => cfg.MaxStatements(100)).Execute("while(true);")
             );
         }
-        
+
         [Fact]
         public void ShouldThrowTimeout()
         {
@@ -671,7 +680,7 @@ namespace Jint.Tests.Runtime
             var funcRoot = function() {
                 funcA();
             };
- 
+
             var funcA = function() {
                 funcB();
             };
@@ -704,7 +713,7 @@ namespace Jint.Tests.Runtime
             var funcRoot = function() {
                 funcA();
             };
- 
+
             var funcA = function() {
                 funcB();
             };
@@ -851,6 +860,32 @@ namespace Jint.Tests.Runtime
             Assert.Throws<ArgumentException>(() => x.Invoke(1, 2));
         }
 
+        [Fact]
+        public void ShouldInvokeAFunctionValueThatBelongsToAnObject()
+        {
+            RunTest(@"
+                var obj = { foo: 5, getFoo: function (bar) { return 'foo is ' + this.foo + ', bar is ' + bar; } };
+            ");
+
+            var obj = _engine.GetValue("obj").AsObject();
+            var getFoo = obj.Get("getFoo");
+
+            Assert.Equal("foo is 5, bar is 7", _engine.Invoke(getFoo, obj, new object[] { 7 }).AsString());
+        }
+
+        [Fact]
+        public void ShouldNotInvokeNonFunctionValueThatBelongsToAnObject()
+        {
+            RunTest(@"
+                var obj = { foo: 2 };
+            ");
+
+            var obj = _engine.GetValue("obj").AsObject();
+            var foo = obj.Get("foo");
+
+            Assert.Throws<ArgumentException>(() => _engine.Invoke(foo, obj, new object[] { }));
+        }
+
         [Theory]
         [InlineData("0", 0, 16)]
         [InlineData("1", 1, 16)]
@@ -873,6 +908,55 @@ namespace Jint.Tests.Runtime
 
                 var b = JSON.parse('{ ""x"": -1 }');
                 assert(b.x === -1);
+            ");
+        }
+
+        [Fact]
+        public void JsonParserShouldUseToString()
+        {
+            RunTest(@"
+                var a = JSON.parse(null); // Equivalent to JSON.parse('null')
+                assert(a === null);
+            ");
+
+            RunTest(@"
+                var a = JSON.parse(true); // Equivalent to JSON.parse('true')
+                assert(a === true);
+            ");
+
+            RunTest(@"
+                var a = JSON.parse(false); // Equivalent to JSON.parse('false')
+                assert(a === false);
+            ");
+
+            RunTest(@"
+                try {
+                    JSON.parse(undefined); // Equivalent to JSON.parse('undefined')
+                    assert(false);
+                }
+                catch(ex) {
+                    assert(ex instanceof SyntaxError);
+                }
+            ");
+
+            RunTest(@"
+                try {
+                    JSON.parse({}); // Equivalent to JSON.parse('[object Object]')
+                    assert(false);
+                }
+                catch(ex) {
+                    assert(ex instanceof SyntaxError);
+                }
+            ");
+
+            RunTest(@"
+                try {
+                    JSON.parse(function() { }); // Equivalent to JSON.parse('function () {}')
+                    assert(false);
+                }
+                catch(ex) {
+                    assert(ex instanceof SyntaxError);
+                }
             ");
         }
 
@@ -901,11 +985,10 @@ namespace Jint.Tests.Runtime
         }
 
         [Fact]
+        [ReplaceCulture("fr-FR")]
         public void ShouldBeCultureInvariant()
         {
             // decimals in french are separated by commas
-            Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
-
             var engine = new Engine();
 
             var result = engine.Execute("1.2 + 2.1").GetCompletionValue().AsNumber();
@@ -940,7 +1023,7 @@ namespace Jint.Tests.Runtime
                 Assert.Equal("jQuery.js", e.Source);
             }
         }
-
+        #region DateParsingAndStrings
         [Fact]
         public void ParseShouldReturnNumber()
         {
@@ -951,21 +1034,40 @@ namespace Jint.Tests.Runtime
         }
 
         [Fact]
+        public void LocalDateTimeShouldNotLoseTimezone()
+        {
+            var date = new DateTime(2016, 1, 1, 13, 0, 0, DateTimeKind.Local);
+            var engine = new Engine().SetValue("localDate", date);
+            engine.Execute(@"localDate");
+            var actual = engine.GetCompletionValue().AsDate().ToDateTime();
+            Assert.Equal(date.ToUniversalTime(), actual.ToUniversalTime());
+            Assert.Equal(date.ToLocalTime(), actual.ToLocalTime());
+        }
+
+        [Fact]
         public void UtcShouldUseUtc()
         {
-            const string customName = "Custom Time";
-            var customTimeZone = TimeZoneInfo.CreateCustomTimeZone(customName, new TimeSpan(7, 11, 0), customName, customName, customName, null, false);
+            var customTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Central Europe Standard Time");
+
             var engine = new Engine(cfg => cfg.LocalTimeZone(customTimeZone));
 
             var result = engine.Execute("Date.UTC(1970,0,1)").GetCompletionValue().AsNumber();
             Assert.Equal(0, result);
         }
 
+#if NET451
         [Fact]
+#else
+        [Fact(Skip = "CreateCustomTimeZone not available on netstandard")]
+#endif
         public void ShouldUseLocalTimeZoneOverride()
         {
+#if NET451
             const string customName = "Custom Time";
             var customTimeZone = TimeZoneInfo.CreateCustomTimeZone(customName, new TimeSpan(0, 11, 0), customName, customName, customName, null, false);
+#else
+            var customTimeZone = TimeZoneInfo.Utc;
+#endif
 
             var engine = new Engine(cfg => cfg.LocalTimeZone(customTimeZone));
 
@@ -1007,8 +1109,12 @@ namespace Jint.Tests.Runtime
         [InlineData("1970-01-01T00:00:00.000-00:00")]
         public void ShouldParseAsUtc(string date)
         {
+#if NET451
             const string customName = "Custom Time";
             var customTimeZone = TimeZoneInfo.CreateCustomTimeZone(customName, new TimeSpan(7, 11, 0), customName, customName, customName, null, false);
+#else
+            var customTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Tonga Standard Time");
+#endif
             var engine = new Engine(cfg => cfg.LocalTimeZone(customTimeZone));
 
             engine.SetValue("d", date);
@@ -1017,7 +1123,11 @@ namespace Jint.Tests.Runtime
             Assert.Equal(0, result);
         }
 
+#if NET451
         [Theory]
+#else
+        [Theory(Skip = "CreateCustomTimeZone not available on netstandard")]
+#endif
         [InlineData("1970/01")]
         [InlineData("1970/01/01")]
         [InlineData("1970/01/01T00:00")]
@@ -1036,15 +1146,65 @@ namespace Jint.Tests.Runtime
         [InlineData("1970-01-01T00:00:00.000+00:11")]
         public void ShouldParseAsLocalTime(string date)
         {
+            const int timespanMinutes = 11;
+            const int msPriorMidnight = -timespanMinutes * 60 * 1000;
+#if NET451
             const string customName = "Custom Time";
-            var customTimeZone = TimeZoneInfo.CreateCustomTimeZone(customName, new TimeSpan(0, 11, 0), customName, customName, customName, null, false);
+            var customTimeZone = TimeZoneInfo.CreateCustomTimeZone(customName, new TimeSpan(0, timespanMinutes, 0), customName, customName, customName, null, false);
+#else
+            var customTimeZone = TimeZoneInfo.Utc;
+#endif
             var engine = new Engine(cfg => cfg.LocalTimeZone(customTimeZone)).SetValue("d", date);
 
             var result = engine.Execute("Date.parse(d);").GetCompletionValue().AsNumber();
 
-            Assert.Equal(-11 * 60 * 1000, result);
+            Assert.Equal(msPriorMidnight, result);
         }
 
+        public static System.Collections.Generic.IEnumerable<object[]> TestDates
+        {
+            get
+            {
+                yield return new object[] { new DateTime(2000, 1, 1) };
+                yield return new object[] { new DateTime(2000, 1, 1, 0, 15, 15, 15) };
+                yield return new object[] { new DateTime(2000, 6, 1, 0, 15, 15, 15) };
+                yield return new object[] { new DateTime(1900, 1, 1) };
+                yield return new object[] { new DateTime(1900, 1, 1, 0, 15, 15, 15) };
+                yield return new object[] { new DateTime(1900, 6, 1, 0, 15, 15, 15) };
+            }
+        }
+
+        [Theory, MemberData("TestDates")]
+        public void TestDateToISOStringFormat(DateTime testDate)
+        {
+            var customTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Tonga Standard Time");
+
+            var engine = new Engine(ctx => ctx.LocalTimeZone(customTimeZone));
+            var testDateTimeOffset = new DateTimeOffset(testDate, customTimeZone.GetUtcOffset(testDate));
+            engine.Execute(
+                string.Format("var d = new Date({0},{1},{2},{3},{4},{5},{6});", testDateTimeOffset.Year, testDateTimeOffset.Month - 1, testDateTimeOffset.Day, testDateTimeOffset.Hour, testDateTimeOffset.Minute, testDateTimeOffset.Second, testDateTimeOffset.Millisecond));
+            Assert.Equal(testDateTimeOffset.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"), engine.Execute("d.toISOString();").GetCompletionValue().ToString());
+        }
+
+        [Theory, MemberData("TestDates")]
+        public void TestDateToStringFormat(DateTime testDate)
+        {
+            var customTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Tonga Standard Time");
+
+            var engine = new Engine(ctx => ctx.LocalTimeZone(customTimeZone));
+            var testDateTimeOffset = new DateTimeOffset(testDate, customTimeZone.GetUtcOffset(testDate));
+            engine.Execute(
+                string.Format("var d = new Date({0},{1},{2},{3},{4},{5},{6});", testDateTimeOffset.Year, testDateTimeOffset.Month - 1, testDateTimeOffset.Day, testDateTimeOffset.Hour, testDateTimeOffset.Minute, testDateTimeOffset.Second, testDateTimeOffset.Millisecond));
+
+            var expected = testDateTimeOffset.ToString("ddd MMM dd yyyy HH:mm:ss 'GMT'zzz");
+            var actual = engine.Execute("d.toString();").GetCompletionValue().ToString();
+
+            Assert.Equal(expected, actual);
+        }
+
+        #endregion
+
+        //DateParsingAndStrings
         [Fact]
         public void EmptyStringShouldMatchRegex()
         {
@@ -1057,8 +1217,7 @@ namespace Jint.Tests.Runtime
         [Fact]
         public void ShouldExecuteHandlebars()
         {
-            var url = "http://cdnjs.cloudflare.com/ajax/libs/handlebars.js/2.0.0/handlebars.js";
-            var content = new WebClient().DownloadString(url);
+            var content = GetEmbeddedFile("handlebars.js");
 
             RunTest(content);
 
@@ -1136,7 +1295,7 @@ namespace Jint.Tests.Runtime
                     result = e instanceof RangeError;
                 }
 
-                assert(result);                
+                assert(result);
             ");
         }
 
@@ -1248,7 +1407,7 @@ namespace Jint.Tests.Runtime
             var engine = new Engine(options => options.DebugMode());
 
             engine.Step += EngineStep;
-            
+
             engine.Execute(@"var local = true;
                 var creatingSomeOtherLine = 0;
                 var lastOneIPromise = true");
@@ -1276,7 +1435,7 @@ namespace Jint.Tests.Runtime
 
             Assert.Equal(1, countBreak);
         }
-        
+
         private StepMode EngineStep(object sender, DebugInformation debugInfo)
         {
             Assert.NotNull(sender);
@@ -1326,7 +1485,7 @@ namespace Jint.Tests.Runtime
             Assert.Contains(debugInfo.Globals, kvp => kvp.Key.Equals("local", StringComparison.Ordinal) && kvp.Value.AsBoolean() == false);
             Assert.Contains(debugInfo.Locals, kvp => kvp.Key.Equals("local", StringComparison.Ordinal) && kvp.Value.AsBoolean() == false);
             Assert.DoesNotContain(debugInfo.Locals, kvp => kvp.Key.Equals("global", StringComparison.Ordinal));
-            
+
             countBreak++;
             return stepMode;
         }
@@ -1372,7 +1531,7 @@ namespace Jint.Tests.Runtime
                     ; // shall not step
                     ; // not even here
                 }
-                func(); // shall not step                 
+                func(); // shall not step
                 ; // shall not step ");
 
             engine.Step -= EngineStep;
@@ -1384,7 +1543,7 @@ namespace Jint.Tests.Runtime
         public void ShouldNotStepInIfRequiredToStepOut()
         {
             countBreak = 0;
-            
+
             var engine = new Engine(options => options.DebugMode());
 
             engine.Step += EngineStepOutWhenInsideFunction;
@@ -1394,7 +1553,7 @@ namespace Jint.Tests.Runtime
                     ; // third step - now stepping out
                     ; // it should not step here
                 }
-                func(); // second step                 
+                func(); // second step
                 ; // fourth step ");
 
             engine.Step -= EngineStepOutWhenInsideFunction;
@@ -1411,7 +1570,7 @@ namespace Jint.Tests.Runtime
             countBreak++;
             if (debugInfo.CallStack.Count > 0)
                 return StepMode.Out;
-            
+
             return StepMode.Into;
         }
 
@@ -1428,7 +1587,7 @@ namespace Jint.Tests.Runtime
             engine.Execute(@"var global = true;
                             function func1()
                             {
-                                var local = 
+                                var local =
                                     false;
                             }
                             func1();");
@@ -1442,7 +1601,7 @@ namespace Jint.Tests.Runtime
         public void ShouldNotStepInsideIfRequiredToStepOver()
         {
             countBreak = 0;
-            
+
             var engine = new Engine(options => options.DebugMode());
 
             stepMode = StepMode.Over;
@@ -1453,7 +1612,7 @@ namespace Jint.Tests.Runtime
                     ; // third step - it shall not step here
                     ; // it shall not step here
                 }
-                func(); // second step                 
+                func(); // second step
                 ; // third step ");
 
             engine.Step -= EngineStep;
@@ -1472,7 +1631,7 @@ namespace Jint.Tests.Runtime
             engine.Step += EngineStep;
 
             engine.Execute(@"var step1 = 1; // first step
-                var step2 = 2; // second step                 
+                var step2 = 2; // second step
                 if (step1 !== step2) // third step
                 { // fourth step
                     ; // fifth step
@@ -1543,8 +1702,9 @@ namespace Jint.Tests.Runtime
         public void DateToStringMethodsShouldUseCurrentTimeZoneAndCulture()
         {
             // Forcing to PDT and FR for tests
-            var PDT = TimeZoneInfo.CreateCustomTimeZone("Pacific Daylight Time", new TimeSpan(-7, 0, 0), "Pacific Daylight Time", "Pacific Daylight Time");
-            var FR = CultureInfo.GetCultureInfo("fr-FR");
+            // var PDT = TimeZoneInfo.CreateCustomTimeZone("Pacific Daylight Time", new TimeSpan(-7, 0, 0), "Pacific Daylight Time", "Pacific Daylight Time");
+            var PDT = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+            var FR = new CultureInfo("fr-FR");
 
             var engine = new Engine(options => options.LocalTimeZone(PDT).Culture(FR))
                 .SetValue("log", new Action<object>(Console.WriteLine))
@@ -1565,11 +1725,30 @@ namespace Jint.Tests.Runtime
         }
 
         [Fact]
+        public void DateShouldHonorTimezoneDaylightSavingRules()
+        {
+            var EST = TimeZoneInfo.FindSystemTimeZoneById("US Eastern Standard Time");
+            var engine = new Engine(options => options.LocalTimeZone(EST))
+                .SetValue("log", new Action<object>(Console.WriteLine))
+                .SetValue("assert", new Action<bool>(Assert.True))
+                .SetValue("equal", new Action<object, object>(Assert.Equal))
+                ;
+
+            engine.Execute(@"
+                    var d = new Date(2016, 8, 1);
+
+                    equal('Thu Sep 01 2016 00:00:00 GMT-04:00', d.toString());
+                    equal('Thu Sep 01 2016', d.toDateString());
+            ");
+        }
+
+        [Fact]
         public void DateShouldParseToString()
         {
             // Forcing to PDT and FR for tests
-            var PDT = TimeZoneInfo.CreateCustomTimeZone("Pacific Daylight Time", new TimeSpan(-7, 0, 0), "Pacific Daylight Time", "Pacific Daylight Time");
-            var FR = CultureInfo.GetCultureInfo("fr-FR");
+            // var PDT = TimeZoneInfo.CreateCustomTimeZone("Pacific Daylight Time", new TimeSpan(-7, 0, 0), "Pacific Daylight Time", "Pacific Daylight Time");
+            var PDT = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+            var FR = new CultureInfo("fr-FR");
 
             new Engine(options => options.LocalTimeZone(PDT).Culture(FR))
                 .SetValue("log", new Action<object>(Console.WriteLine))
@@ -1586,8 +1765,9 @@ namespace Jint.Tests.Runtime
         public void LocaleNumberShouldUseLocalCulture()
         {
             // Forcing to PDT and FR for tests
-            var PDT = TimeZoneInfo.CreateCustomTimeZone("Pacific Daylight Time", new TimeSpan(-7, 0, 0), "Pacific Daylight Time", "Pacific Daylight Time");
-            var FR = CultureInfo.GetCultureInfo("fr-FR");
+            // var PDT = TimeZoneInfo.CreateCustomTimeZone("Pacific Daylight Time", new TimeSpan(-7, 0, 0), "Pacific Daylight Time", "Pacific Daylight Time");
+            var PDT = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+            var FR = new CultureInfo("fr-FR");
 
             new Engine(options => options.LocalTimeZone(PDT).Culture(FR))
                 .SetValue("log", new Action<object>(Console.WriteLine))
@@ -1598,6 +1778,360 @@ namespace Jint.Tests.Runtime
                     equal('-1.23', d.toString());
                     equal('-1,23', d.toLocaleString());
             ");
+        }
+
+        [Fact]
+        public void DateCtorShouldAcceptDate()
+        {
+            RunTest(@"
+                var a = new Date();
+                var b = new Date(a);
+                assert(String(a) === String(b));
+            ");
+        }
+
+        [Fact]
+        public void RegExpResultIsMutable()
+        {
+            RunTest(@"
+                var match = /quick\s(brown).+?(jumps)/ig.exec('The Quick Brown Fox Jumps Over The Lazy Dog');
+                var result = match.shift();
+                assert(result === 'Quick Brown Fox Jumps');
+            ");
+        }
+
+        [Fact]
+        public void RegExpSupportsMultiline()
+        {
+            RunTest(@"
+                var rheaders = /^(.*?):[ \t]*([^\r\n]*)$/mg;
+                var headersString = 'X-AspNetMvc-Version: 4.0\r\nX-Powered-By: ASP.NET\r\n\r\n';
+                match = rheaders.exec(headersString);
+                assert('X-AspNetMvc-Version' === match[1]);
+                assert('4.0' === match[2]);
+            ");
+
+            RunTest(@"
+                var rheaders = /^(.*?):[ \t]*(.*?)$/mg;
+                var headersString = 'X-AspNetMvc-Version: 4.0\r\nX-Powered-By: ASP.NET\r\n\r\n';
+                match = rheaders.exec(headersString);
+                assert('X-AspNetMvc-Version' === match[1]);
+                assert('4.0' === match[2]);
+            ");
+
+            RunTest(@"
+                var rheaders = /^(.*?):[ \t]*([^\r\n]*)$/mg;
+                var headersString = 'X-AspNetMvc-Version: 4.0\nX-Powered-By: ASP.NET\n\n';
+                match = rheaders.exec(headersString);
+                assert('X-AspNetMvc-Version' === match[1]);
+                assert('4.0' === match[2]);
+            ");
+        }
+
+        [Fact]
+        public void ShouldSetYearBefore1970()
+        {
+
+            RunTest(@"
+                var d = new Date('1969-01-01T08:17:00');
+                d.setYear(2015);
+                equal('2015-01-01T08:17:00.000Z', d.toISOString());
+            ");
+        }
+
+        [Fact]
+        public void ExceptionShouldHaveLocationOfInnerFunction()
+        {
+            try
+            {
+                new Engine()
+                    .Execute(@"
+                    function test(s) {
+                        o.boom();
+                    }
+                    test('arg');
+                ");
+            }
+            catch (JavaScriptException ex)
+            {
+                Assert.Equal(3, ex.LineNumber);
+            }
+        }
+
+        [Fact]
+        public void GlobalRegexLiteralShouldNotKeepState()
+        {
+            RunTest(@"
+				var url = 'https://www.example.com';
+
+				assert(isAbsolutePath(url));
+				assert(isAbsolutePath(url));
+				assert(isAbsolutePath(url));
+
+				function isAbsolutePath(path) {
+					return /\.+/g.test(path);
+				}
+            ");
+        }
+
+        [Fact]
+        public void ShouldCompareInnerValueOfClrInstances()
+        {
+            var engine = new Engine();
+
+            // Create two separate Guid with identical inner values.
+            var guid1 = Guid.NewGuid();
+            var guid2 = new Guid(guid1.ToString());
+
+            engine.SetValue("guid1", guid1);
+            engine.SetValue("guid2", guid2);
+
+            var result = engine.Execute("guid1 == guid2").GetCompletionValue().AsBoolean();
+
+            Assert.True(result);
+        }
+
+        [Fact]
+        public void ShouldStringifyNumWithoutV8DToA()
+        {
+            // 53.6841659 cannot be converted by V8's DToA => "old" DToA code will be used.
+
+            var engine = new Engine();
+            Native.JsValue val = engine.Execute("JSON.stringify(53.6841659)").GetCompletionValue();
+
+            Assert.True(val.AsString() == "53.6841659");
+        }
+		
+        [Theory]
+        [InlineData("", "escape('')")]
+        [InlineData("%u0100%u0101%u0102", "escape('\u0100\u0101\u0102')")]
+        [InlineData("%uFFFD%uFFFE%uFFFF", "escape('\ufffd\ufffe\uffff')")]
+        [InlineData("%uD834%uDF06", "escape('\ud834\udf06')")]
+        [InlineData("%00%01%02%03", "escape('\x00\x01\x02\x03')")]
+        [InlineData("%2C", "escape(',')")]
+        [InlineData("%3A%3B%3C%3D%3E%3F", "escape(':;<=>?')")]
+        [InlineData("%60", "escape('`')")]
+        [InlineData("%7B%7C%7D%7E%7F%80", "escape('{|}~\x7f\x80')")]
+        [InlineData("%FD%FE%FF", "escape('\xfd\xfe\xff')")]
+        [InlineData("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@*_+-./", "escape('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@*_+-./')")]
+        public void ShouldEvaluateEscape(object expected, string source)
+        {
+            var engine = new Engine();
+            var result = engine.Execute(source).GetCompletionValue().ToObject();
+
+            Assert.Equal(expected, result);
+        }
+
+        [Theory]
+        //https://github.com/tc39/test262/blob/master/test/annexB/built-ins/unescape/empty-string.js
+        [InlineData("", "unescape('')")]
+        //https://github.com/tc39/test262/blob/master/test/annexB/built-ins/unescape/four-ignore-bad-u.js
+        [InlineData("%U0000", "unescape('%U0000')")]
+        [InlineData("%t0000", "unescape('%t0000')")]
+        [InlineData("%v0000", "unescape('%v0000')")]
+        [InlineData("%" + "\x00" + "00", "unescape('%%0000')")]
+        //https://github.com/tc39/test262/blob/master/test/annexB/built-ins/unescape/four-ignore-end-str.js
+        [InlineData("%u", "unescape('%u')")]
+        [InlineData("%u0", "unescape('%u0')")]
+        [InlineData("%u1", "unescape('%u1')")]
+        [InlineData("%u2", "unescape('%u2')")]
+        [InlineData("%u3", "unescape('%u3')")]
+        [InlineData("%u4", "unescape('%u4')")]
+        [InlineData("%u5", "unescape('%u5')")]
+        [InlineData("%u6", "unescape('%u6')")]
+        [InlineData("%u7", "unescape('%u7')")]
+        [InlineData("%u8", "unescape('%u8')")]
+        [InlineData("%u9", "unescape('%u9')")]
+        [InlineData("%ua", "unescape('%ua')")]
+        [InlineData("%uA", "unescape('%uA')")]
+        [InlineData("%ub", "unescape('%ub')")]
+        [InlineData("%uB", "unescape('%uB')")]
+        [InlineData("%uc", "unescape('%uc')")]
+        [InlineData("%uC", "unescape('%uC')")]
+        [InlineData("%ud", "unescape('%ud')")]
+        [InlineData("%uD", "unescape('%uD')")]
+        [InlineData("%ue", "unescape('%ue')")]
+        [InlineData("%uE", "unescape('%uE')")]
+        [InlineData("%uf", "unescape('%uf')")]
+        [InlineData("%uF", "unescape('%uF')")]
+        [InlineData("%u00", "unescape('%u00')")]
+        [InlineData("%u01", "unescape('%u01')")]
+        [InlineData("%u02", "unescape('%u02')")]
+        [InlineData("%u03", "unescape('%u03')")]
+        [InlineData("%u04", "unescape('%u04')")]
+        [InlineData("%u05", "unescape('%u05')")]
+        [InlineData("%u06", "unescape('%u06')")]
+        [InlineData("%u07", "unescape('%u07')")]
+        [InlineData("%u08", "unescape('%u08')")]
+        [InlineData("%u09", "unescape('%u09')")]
+        [InlineData("%u0a", "unescape('%u0a')")]
+        [InlineData("%u0A", "unescape('%u0A')")]
+        [InlineData("%u0b", "unescape('%u0b')")]
+        [InlineData("%u0B", "unescape('%u0B')")]
+        [InlineData("%u0c", "unescape('%u0c')")]
+        [InlineData("%u0C", "unescape('%u0C')")]
+        [InlineData("%u0d", "unescape('%u0d')")]
+        [InlineData("%u0D", "unescape('%u0D')")]
+        [InlineData("%u0e", "unescape('%u0e')")]
+        [InlineData("%u0E", "unescape('%u0E')")]
+        [InlineData("%u0f", "unescape('%u0f')")]
+        [InlineData("%u0F", "unescape('%u0F')")]
+        [InlineData("%u000", "unescape('%u000')")]
+        [InlineData("%u001", "unescape('%u001')")]
+        [InlineData("%u002", "unescape('%u002')")]
+        [InlineData("%u003", "unescape('%u003')")]
+        [InlineData("%u004", "unescape('%u004')")]
+        [InlineData("%u005", "unescape('%u005')")]
+        [InlineData("%u006", "unescape('%u006')")]
+        [InlineData("%u007", "unescape('%u007')")]
+        [InlineData("%u008", "unescape('%u008')")]
+        [InlineData("%u009", "unescape('%u009')")]
+        [InlineData("%u00a", "unescape('%u00a')")]
+        [InlineData("%u00A", "unescape('%u00A')")]
+        [InlineData("%u00b", "unescape('%u00b')")]
+        [InlineData("%u00B", "unescape('%u00B')")]
+        [InlineData("%u00c", "unescape('%u00c')")]
+        [InlineData("%u00C", "unescape('%u00C')")]
+        [InlineData("%u00d", "unescape('%u00d')")]
+        [InlineData("%u00D", "unescape('%u00D')")]
+        [InlineData("%u00e", "unescape('%u00e')")]
+        [InlineData("%u00E", "unescape('%u00E')")]
+        [InlineData("%u00f", "unescape('%u00f')")]
+        [InlineData("%u00F", "unescape('%u00F')")]
+        //https://github.com/tc39/test262/blob/master/test/annexB/built-ins/unescape/four-ignore-non-hex.js
+        [InlineData("%u000%0", "unescape('%u000%0')")]
+        [InlineData("%u000g0", "unescape('%u000g0')")]
+        [InlineData("%u000G0", "unescape('%u000G0')")]
+        [InlineData("%u00g00", "unescape('%u00g00')")]
+        [InlineData("%u00G00", "unescape('%u00G00')")]
+        [InlineData("%u0g000", "unescape('%u0g000')")]
+        [InlineData("%u0G000", "unescape('%u0G000')")]
+        [InlineData("%ug0000", "unescape('%ug0000')")]
+        [InlineData("%uG0000", "unescape('%uG0000')")]
+        [InlineData("%u000u0", "unescape('%u000u0')")]
+        [InlineData("%u000U0", "unescape('%u000U0')")]
+        [InlineData("%u00u00", "unescape('%u00u00')")]
+        [InlineData("%u00U00", "unescape('%u00U00')")]
+        [InlineData("%u0u000", "unescape('%u0u000')")]
+        [InlineData("%u0U000", "unescape('%u0U000')")]
+        [InlineData("%uu0000", "unescape('%uu0000')")]
+        [InlineData("%uU0000", "unescape('%uU0000')")]
+        //https://github.com/tc39/test262/blob/master/test/annexB/built-ins/unescape/four.js
+        [InlineData("%0" + "\x00" + "0", "unescape('%0%u00000')")]
+        [InlineData("%0" + "\x01" + "0", "unescape('%0%u00010')")]
+        [InlineData("%0)0", "unescape('%0%u00290')")]
+        [InlineData("%0*0", "unescape('%0%u002a0')")]
+        [InlineData("%0*0", "unescape('%0%u002A0')")]
+        [InlineData("%0+0", "unescape('%0%u002b0')")]
+        [InlineData("%0+0", "unescape('%0%u002B0')")]
+        [InlineData("%0,0", "unescape('%0%u002c0')")]
+        [InlineData("%0,0", "unescape('%0%u002C0')")]
+        [InlineData("%0-0", "unescape('%0%u002d0')")]
+        [InlineData("%0-0", "unescape('%0%u002D0')")]
+        [InlineData("%090", "unescape('%0%u00390')")]
+        [InlineData("%0:0", "unescape('%0%u003a0')")]
+        [InlineData("%0:0", "unescape('%0%u003A0')")]
+        [InlineData("%0?0", "unescape('%0%u003f0')")]
+        [InlineData("%0?0", "unescape('%0%u003F0')")]
+        [InlineData("%0@0", "unescape('%0%u00400')")]
+        [InlineData("%0Z0", "unescape('%0%u005a0')")]
+        [InlineData("%0Z0", "unescape('%0%u005A0')")]
+        [InlineData("%0[0", "unescape('%0%u005b0')")]
+        [InlineData("%0[0", "unescape('%0%u005B0')")]
+        [InlineData("%0^0", "unescape('%0%u005e0')")]
+        [InlineData("%0^0", "unescape('%0%u005E0')")]
+        [InlineData("%0_0", "unescape('%0%u005f0')")]
+        [InlineData("%0_0", "unescape('%0%u005F0')")]
+        [InlineData("%0`0", "unescape('%0%u00600')")]
+        [InlineData("%0a0", "unescape('%0%u00610')")]
+        [InlineData("%0z0", "unescape('%0%u007a0')")]
+        [InlineData("%0z0", "unescape('%0%u007A0')")]
+        [InlineData("%0{0", "unescape('%0%u007b0')")]
+        [InlineData("%0{0", "unescape('%0%u007B0')")]
+        [InlineData("%0" + "\ufffe" + "0", "unescape('%0%ufffe0')")]
+        [InlineData("%0" + "\ufffe" + "0", "unescape('%0%uFffe0')")]
+        [InlineData("%0" + "\ufffe" + "0", "unescape('%0%ufFfe0')")]
+        [InlineData("%0" + "\ufffe" + "0", "unescape('%0%uffFe0')")]
+        [InlineData("%0" + "\ufffe" + "0", "unescape('%0%ufffE0')")]
+        [InlineData("%0" + "\ufffe" + "0", "unescape('%0%uFFFE0')")]
+        [InlineData("%0" + "\uffff" + "0", "unescape('%0%uffff0')")]
+        [InlineData("%0" + "\uffff" + "0", "unescape('%0%uFfff0')")]
+        [InlineData("%0" + "\uffff" + "0", "unescape('%0%ufFff0')")]
+        [InlineData("%0" + "\uffff" + "0", "unescape('%0%uffFf0')")]
+        [InlineData("%0" + "\uffff" + "0", "unescape('%0%ufffF0')")]
+        [InlineData("%0" + "\uffff" + "0", "unescape('%0%uFFFF0')")]
+        //https://github.com/tc39/test262/blob/master/test/annexB/built-ins/unescape/two-ignore-end-str.js
+        [InlineData("%", "unescape('%')")]
+        [InlineData("%0", "unescape('%0')")]
+        [InlineData("%1", "unescape('%1')")]
+        [InlineData("%2", "unescape('%2')")]
+        [InlineData("%3", "unescape('%3')")]
+        [InlineData("%4", "unescape('%4')")]
+        [InlineData("%5", "unescape('%5')")]
+        [InlineData("%6", "unescape('%6')")]
+        [InlineData("%7", "unescape('%7')")]
+        [InlineData("%8", "unescape('%8')")]
+        [InlineData("%9", "unescape('%9')")]
+        [InlineData("%a", "unescape('%a')")]
+        [InlineData("%A", "unescape('%A')")]
+        [InlineData("%b", "unescape('%b')")]
+        [InlineData("%B", "unescape('%B')")]
+        [InlineData("%c", "unescape('%c')")]
+        [InlineData("%C", "unescape('%C')")]
+        [InlineData("%d", "unescape('%d')")]
+        [InlineData("%D", "unescape('%D')")]
+        [InlineData("%e", "unescape('%e')")]
+        [InlineData("%E", "unescape('%E')")]
+        [InlineData("%f", "unescape('%f')")]
+        [InlineData("%F", "unescape('%F')")]
+        //https://github.com/tc39/test262/blob/master/test/annexB/built-ins/unescape/two-ignore-non-hex.js
+        [InlineData("%0%0", "unescape('%0%0')")]
+        [InlineData("%0g0", "unescape('%0g0')")]
+        [InlineData("%0G0", "unescape('%0G0')")]
+        [InlineData("%g00", "unescape('%g00')")]
+        [InlineData("%G00", "unescape('%G00')")]
+        [InlineData("%0u0", "unescape('%0u0')")]
+        [InlineData("%0U0", "unescape('%0U0')")]
+        [InlineData("%u00", "unescape('%u00')")]
+        [InlineData("%U00", "unescape('%U00')")]
+        //https://github.com/tc39/test262/blob/master/test/annexB/built-ins/unescape/two.js
+        [InlineData("%0" + "\x00" + "00", "unescape('%0%0000')")]
+        [InlineData("%0" + "\x01" + "00", "unescape('%0%0100')")]
+        [InlineData("%0)00", "unescape('%0%2900')")]
+        [InlineData("%0*00", "unescape('%0%2a00')")]
+        [InlineData("%0*00", "unescape('%0%2A00')")]
+        [InlineData("%0+00", "unescape('%0%2b00')")]
+        [InlineData("%0+00", "unescape('%0%2B00')")]
+        [InlineData("%0,00", "unescape('%0%2c00')")]
+        [InlineData("%0,00", "unescape('%0%2C00')")]
+        [InlineData("%0-00", "unescape('%0%2d00')")]
+        [InlineData("%0-00", "unescape('%0%2D00')")]
+        [InlineData("%0900", "unescape('%0%3900')")]
+        [InlineData("%0:00", "unescape('%0%3a00')")]
+        [InlineData("%0:00", "unescape('%0%3A00')")]
+        [InlineData("%0?00", "unescape('%0%3f00')")]
+        [InlineData("%0?00", "unescape('%0%3F00')")]
+        [InlineData("%0@00", "unescape('%0%4000')")]
+        [InlineData("%0Z00", "unescape('%0%5a00')")]
+        [InlineData("%0Z00", "unescape('%0%5A00')")]
+        [InlineData("%0[00", "unescape('%0%5b00')")]
+        [InlineData("%0[00", "unescape('%0%5B00')")]
+        [InlineData("%0^00", "unescape('%0%5e00')")]
+        [InlineData("%0^00", "unescape('%0%5E00')")]
+        [InlineData("%0_00", "unescape('%0%5f00')")]
+        [InlineData("%0_00", "unescape('%0%5F00')")]
+        [InlineData("%0`00", "unescape('%0%6000')")]
+        [InlineData("%0a00", "unescape('%0%6100')")]
+        [InlineData("%0z00", "unescape('%0%7a00')")]
+        [InlineData("%0z00", "unescape('%0%7A00')")]
+        [InlineData("%0{00", "unescape('%0%7b00')")]
+        [InlineData("%0{00", "unescape('%0%7B00')")]
+        public void ShouldEvaluateUnescape(object expected, string source)
+        {
+            var engine = new Engine();
+            var result = engine.Execute(source).GetCompletionValue().ToObject();
+
+            Assert.Equal(expected, result);
         }
     }
 }

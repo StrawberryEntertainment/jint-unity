@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
-using Jint.Native;
 using Jint.Runtime.Interop;
 
 namespace Jint
@@ -21,7 +20,9 @@ namespace Jint
         private TimeSpan _timeoutInterval;
         private CultureInfo _culture = CultureInfo.CurrentCulture;
         private TimeZoneInfo _localTimeZone = TimeZoneInfo.Utc;
-        private List<Assembly> _lookupAssemblies = new List<Assembly>(); 
+        private List<Assembly> _lookupAssemblies = new List<Assembly>();
+        private Predicate<Exception> _clrExceptionsHandler;
+        private IReferenceResolver _referenceResolver;
 
         /// <summary>
         /// When called, doesn't initialize the global scope.
@@ -90,6 +91,28 @@ namespace Jint
             return this;
         }
 
+        /// <summary>
+        /// Exceptions thrown from CLR code are converted to JavaScript errors and
+        /// can be used in at try/catch statement. By default these exceptions are bubbled
+        /// to the CLR host and interrupt the script execution.
+        /// </summary>
+        public Options CatchClrExceptions()
+        {
+            CatchClrExceptions(_ => true);
+            return this;
+        }
+
+        /// <summary>
+        /// Exceptions that thrown from CLR code are converted to JavaScript errors and
+        /// can be used in at try/catch statement. By default these exceptions are bubbled
+        /// to the CLR host and interrupt the script execution.
+        /// </summary>
+        public Options CatchClrExceptions(Predicate<Exception> handler)
+        {
+            _clrExceptionsHandler = handler;
+            return this;
+        }
+
         public Options MaxStatements(int maxStatements = 0)
         {
             _maxStatements = maxStatements;
@@ -129,64 +152,39 @@ namespace Jint
             return this;
         }
 
-        internal bool GetDiscardGlobal()
+        public Options SetReferencesResolver(IReferenceResolver resolver)
         {
-            return _discardGlobal;
+            _referenceResolver = resolver;
+            return this;
         }
 
-        internal bool IsStrict()
-        {
-            return _strict;
-        }
+        internal bool _IsGlobalDiscarded => _discardGlobal;
 
-        internal bool IsDebuggerStatementAllowed()
-        {
-            return _allowDebuggerStatement;
-        }
+        internal bool _IsStrict => _strict;
 
-        internal bool IsDebugMode()
-        {
-            return _debugMode;
-        }
+        internal bool _IsDebuggerStatementAllowed => _allowDebuggerStatement;
 
-        internal bool IsClrAllowed()
-        {
-            return _allowClr;
-        }
-        
-        internal IList<Assembly> GetLookupAssemblies()
-        {
-            return _lookupAssemblies;
-        }
+        internal bool _IsDebugMode => _debugMode;
 
-        internal IEnumerable<IObjectConverter> GetObjectConverters()
-        {
-            return _objectConverters;
-        }
+        internal bool _IsClrAllowed => _allowClr;
 
-        internal int GetMaxStatements()
-        {
-            return _maxStatements;
-        }
+        internal Predicate<Exception> _ClrExceptionsHandler => _clrExceptionsHandler;
 
-        internal int GetMaxRecursionDepth()
-        {
-            return _maxRecursionDepth;
-        }
+        internal IList<Assembly> _LookupAssemblies => _lookupAssemblies;
 
-        internal TimeSpan GetTimeoutInterval()
-        {
-            return _timeoutInterval;
-        }
+        internal IEnumerable<IObjectConverter> _ObjectConverters => _objectConverters;
 
-        internal CultureInfo GetCulture()
-        {
-            return _culture;
-        }
+        internal int _MaxStatements => _maxStatements;
 
-        internal TimeZoneInfo GetLocalTimeZone()
-        {
-            return _localTimeZone;
-        }
+        internal int _MaxRecursionDepth => _maxRecursionDepth;
+
+        internal TimeSpan _TimeoutInterval => _timeoutInterval;
+
+        internal CultureInfo _Culture => _culture;
+
+        internal TimeZoneInfo _LocalTimeZone => _localTimeZone;
+
+        internal IReferenceResolver  _ReferenceResolver => _referenceResolver;
+
     }
 }

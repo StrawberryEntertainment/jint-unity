@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Reflection;
 using Jint.Native;
 using Jint.Native.Object;
 using Jint.Tests.Runtime.Converters;
@@ -15,9 +17,12 @@ namespace Jint.Tests.Runtime
 
         public InteropTests()
         {
-            _engine = new Engine(cfg => cfg.AllowClr(typeof(Shape).Assembly))
+            _engine = new Engine(cfg => cfg.AllowClr(
+                typeof(Shape).GetTypeInfo().Assembly,
+                typeof(System.IO.File).GetTypeInfo().Assembly))
                 .SetValue("log", new Action<object>(Console.WriteLine))
                 .SetValue("assert", new Action<bool>(Assert.True))
+                .SetValue("equal", new Action<object, object>(Assert.Equal))
                 ;
         }
 
@@ -274,6 +279,32 @@ namespace Jint.Tests.Runtime
             Assert.Equal("Donald Duck", dictionary[2]);
         }
 
+        private class DoubleIndexedClass
+        {
+            public int this[int index]
+            {
+                get { return index; }
+            }
+
+            public string this[string index]
+            {
+                get { return index; }
+            }
+        }
+
+        [Fact]
+        public void CanGetIndexUsingBothIntAndStringIndex()
+        {
+            var dictionary = new DoubleIndexedClass();
+
+            _engine.SetValue("dictionary", dictionary);
+
+            RunTest(@"
+                assert(dictionary[1] === 1);
+                assert(dictionary['test'] === 'test');
+            ");
+        }
+
         [Fact]
         public void CanUseGenericMethods()
         {
@@ -295,7 +326,7 @@ namespace Jint.Tests.Runtime
         [Fact]
         public void CanUseMultiGenericTypes()
         {
-            
+
             RunTest(@"
                 var type = System.Collections.Generic.Dictionary(System.Int32, System.String);
                 var dictionary = new type();
@@ -326,19 +357,19 @@ namespace Jint.Tests.Runtime
         [Fact]
         public void CanUseIndexOnList()
         {
-            var arrayList = new System.Collections.ArrayList(2);
-            arrayList.Add("Mickey Mouse");
-            arrayList.Add("Goofy");
+            var list = new List<object>(2);
+            list.Add("Mickey Mouse");
+            list.Add("Goofy");
 
-            _engine.SetValue("dictionary", arrayList);
+            _engine.SetValue("list", list);
 
             RunTest(@"
-                dictionary[1] = 'Donald Duck';
-                assert(dictionary[1] === 'Donald Duck');
+                list[1] = 'Donald Duck';
+                assert(list[1] === 'Donald Duck');
             ");
 
-            Assert.Equal("Mickey Mouse", arrayList[0]);
-            Assert.Equal("Donald Duck", arrayList[1]);
+            Assert.Equal("Mickey Mouse", list[0]);
+            Assert.Equal("Donald Duck", list[1]);
         }
 
         [Fact]
@@ -554,6 +585,30 @@ namespace Jint.Tests.Runtime
             ");
         }
 
+        private class TestClass
+        {
+            public int? NullableInt { get; set; }
+            public DateTime? NullableDate { get; set; }
+            public bool? NullableBool { get; set; }
+        }
+
+        [Fact]
+        public void CanSetNullablePropertiesOnPocos()
+        {
+            var instance = new TestClass();
+            _engine.SetValue("instance", instance);
+
+            RunTest(@"
+                instance.NullableInt = 2;
+                instance.NullableDate = new Date();
+                instance.NullableBool = true;
+
+                assert(instance.NullableInt===2);
+                assert(instance.NullableDate!=null);
+                assert(instance.NullableBool===true);
+            ");
+        }
+
         [Fact]
         public void ShouldConvertArrayToArrayInstance()
         {
@@ -591,7 +646,7 @@ namespace Jint.Tests.Runtime
         {
             var result = _engine.Execute("'foo@bar.com'.split('@');");
             var parts = result.GetCompletionValue().ToObject();
-            
+
             Assert.True(parts.GetType().IsArray);
             Assert.Equal(2, ((object[])parts).Length);
             Assert.Equal("foo", ((object[])parts)[0]);
@@ -702,7 +757,7 @@ namespace Jint.Tests.Runtime
         public void ShouldExecuteFunctionCallBackAsPredicate()
         {
             _engine.SetValue("a", new A());
-            
+
             // Func<>
             RunTest(@"
                 assert(a.Call8(function(){ return 'foo'; }) === 'foo');
@@ -798,10 +853,10 @@ namespace Jint.Tests.Runtime
                 var sw = System.IO.File.CreateText(filename);
                 sw.Write('Hello World');
                 sw.Dispose();
-                
+
                 var content = System.IO.File.ReadAllText(filename);
                 System.Console.WriteLine(content);
-                
+
                 assert(content === 'Hello World');
             ");
         }
@@ -818,13 +873,22 @@ namespace Jint.Tests.Runtime
         }
 
         [Fact]
-        public void ShouldConstructWithParameters()
+        public void ShouldConstructReferenceTypeWithParameters()
         {
             RunTest(@"
                 var Shapes = importNamespace('Shapes');
                 var circle = new Shapes.Circle(1);
                 assert(circle.Radius === 1);
                 assert(circle.Perimeter() === Math.PI);
+            ");
+        }
+
+        [Fact]
+        public void ShouldConstructValueTypeWithoutParameters()
+        {
+            RunTest(@"
+                var guid = new System.Guid();
+                assert('00000000-0000-0000-0000-000000000000' === guid.ToString());
             ");
         }
 
@@ -954,6 +1018,17 @@ namespace Jint.Tests.Runtime
         }
 
         [Fact]
+        public void CanConvertEnumsToString()
+        {
+            var engine1 = new Engine(o => o.AddObjectConverter(new EnumsToStringConverter()))
+                .SetValue("assert", new Action<bool>(Assert.True));
+            engine1.SetValue("p", new { Comparison = StringComparison.CurrentCulture });
+            engine1.Execute("assert(p.Comparison === 'CurrentCulture');");
+            engine1.Execute("var result = p.Comparison;");
+            Assert.Equal("CurrentCulture", (string)engine1.GetValue("result").ToObject());
+        }
+
+        [Fact]
         public void CanUserIncrementOperator()
         {
             var p = new Person
@@ -1030,7 +1105,7 @@ namespace Jint.Tests.Runtime
             RunTest(@"
                 var domain = importNamespace('Jint.Tests.Runtime.Domain');
                 var colors = domain.Colors;
-                
+
                 s.Color = colors.Blue;
                 assert(s.Color === colors.Blue);
             ");
@@ -1358,5 +1433,159 @@ namespace Jint.Tests.Runtime
             Assert.Equal(Nested.ClassWithStaticFields.Readonly, "Readonly");
         }
 
+        [Fact]
+        public void ShouldExecuteFunctionWithValueTypeParameterCorrectly()
+        {
+            _engine.SetValue("a", new A());
+            // Func<int, int>
+            RunTest(@"
+                assert(a.Call17(function(value){ return value; }) === 17);
+            ");
+        }
+
+        [Fact]
+        public void ShouldExecuteActionWithValueTypeParameterCorrectly()
+        {
+            _engine.SetValue("a", new A());
+            // Action<int>
+            RunTest(@"
+                a.Call18(function(value){ assert(value === 18); });
+            ");
+        }
+
+        [Fact]
+        public void ShouldConvertToJsValue()
+        {
+            RunTest(@"
+                var now = System.DateTime.Now;
+                assert(new String(now) == now.toString());
+
+                var zero = System.Int32.MaxValue;
+                assert(new String(zero) == zero.toString());
+            ");
+        }
+
+        [Fact]
+        public void ShouldNotCatchClrExceptions()
+        {
+            var engine = new Engine()
+                .SetValue("throwMyException", new Action(() => { throw new NotSupportedException(); }))
+                .SetValue("Thrower", typeof(Thrower))
+                .Execute(@"
+                    function throwException1(){
+                        try {
+                            throwMyException();
+                            return;
+                        } 
+                        catch(e) {
+                            return;
+                        }
+                    }
+
+                    function throwException2(){
+                        try {
+                            new Thrower().ThrowNotSupportedException();
+                            return;
+                        } 
+                        catch(e) {
+                            return;
+                        }
+                    }
+                ");
+
+            Assert.ThrowsAny<NotSupportedException>(() => engine.Invoke("throwException1"));
+            Assert.ThrowsAny<NotSupportedException>(() => engine.Invoke("throwException2"));
+        }
+
+        [Fact]
+        public void ShouldCatchAllClrExceptions()
+        {
+            string exceptionMessage = "myExceptionMessage";
+
+            var engine = new Engine(o => o.CatchClrExceptions())
+                .SetValue("throwMyException", new Action(() => { throw new Exception(exceptionMessage); }))
+                .SetValue("Thrower", typeof(Thrower))
+                .Execute(@"
+                    function throwException1(){
+                        try {
+                            throwMyException();
+                            return '';
+                        } 
+                        catch(e) {
+                            return e.message;
+                        }
+                    }
+
+                    function throwException2(){
+                        try {
+                            new Thrower().ThrowExceptionWithMessage('myExceptionMessage');
+                            return;
+                        } 
+                        catch(e) {
+                            return e.message;
+                        }
+                    }
+                ");
+
+            Assert.Equal(engine.Invoke("throwException1").AsString(), exceptionMessage);
+            Assert.Equal(engine.Invoke("throwException2").AsString(), exceptionMessage);
+        }
+
+        [Fact]
+        public void ShouldCatchSomeExceptions()
+        {
+            string exceptionMessage = "myExceptionMessage";
+
+            var engine = new Engine(o => o.CatchClrExceptions(e => e is NotSupportedException))
+                .SetValue("throwMyException1", new Action(() => { throw new NotSupportedException(exceptionMessage); }))
+                .SetValue("throwMyException2", new Action(() => { throw new ArgumentNullException(); }))
+                .SetValue("Thrower", typeof(Thrower))
+                .Execute(@"
+                    function throwException1(){
+                        try {
+                            throwMyException1();
+                            return '';
+                        } 
+                        catch(e) {
+                            return e.message;
+                        }
+                    }
+
+                    function throwException2(){
+                        try {
+                            throwMyException2();
+                            return '';
+                        } 
+                        catch(e) {
+                            return e.message;
+                        }
+                    }
+
+                    function throwException3(){
+                        try {
+                            new Thrower().ThrowNotSupportedExceptionWithMessage('myExceptionMessage');
+                            return '';
+                        } 
+                        catch(e) {
+                            return e.message;
+                        }
+                    }
+
+                    function throwException4(){
+                        try {
+                            new Thrower().ThrowArgumentNullException();
+                            return '';
+                        } 
+                        catch(e) {
+                            return e.message;
+                        }
+                    }
+                ");
+            
+            Assert.Equal(engine.Invoke("throwException1").AsString(), exceptionMessage);
+            Assert.Throws<ArgumentNullException>(() => engine.Invoke("throwException2"));
+            Assert.Equal(engine.Invoke("throwException3").AsString(), exceptionMessage);
+            Assert.Throws<ArgumentNullException>(() => engine.Invoke("throwException4"));
+        }
     }
 }

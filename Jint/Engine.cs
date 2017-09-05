@@ -665,6 +665,7 @@ namespace Jint
         /// Invoke the current value as function.
         /// </summary>
         /// <param name="propertyName">The arguments of the function call.</param>
+        /// <param name="arguments"></param>
         /// <returns>The value returned by the function call.</returns>
         public JsValue Invoke(string propertyName, params object[] arguments)
         {

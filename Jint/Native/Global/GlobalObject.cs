@@ -650,7 +650,7 @@ namespace Jint.Native.Global
                         && uriString.Skip(k + 2).Take(4).All(IsValidHexaChar))
                     {
                         c = (char)int.Parse(
-                            string.Join(string.Empty, uriString.Skip(k + 2).Take(4)),
+                            new string(uriString.Skip(k + 2).Take(4).ToArray()),
                             NumberStyles.AllowHexSpecifier);
 
                         k += 5;
@@ -659,7 +659,7 @@ namespace Jint.Native.Global
                         && uriString.Skip(k + 1).Take(2).All(IsValidHexaChar))
                     {
                         c = (char)int.Parse(
-                            string.Join(string.Empty, uriString.Skip(k + 1).Take(2)),
+                            new string(uriString.Skip(k + 1).Take(2).ToArray()),
                             NumberStyles.AllowHexSpecifier);
 
                         k += 2;

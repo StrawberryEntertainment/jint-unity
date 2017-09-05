@@ -85,12 +85,6 @@ namespace Jint
             return this;
         }
 
-        public Options AddLookupAssemblies(params Assembly[] assemblies) {
-            _lookupAssemblies.AddRange(assemblies);
-            _lookupAssemblies = _lookupAssemblies.Distinct().ToList();
-            return this;
-        }
-
         /// <summary>
         /// Exceptions thrown from CLR code are converted to JavaScript errors and
         /// can be used in at try/catch statement. By default these exceptions are bubbled

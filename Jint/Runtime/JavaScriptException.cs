@@ -27,8 +27,20 @@ namespace Jint.Runtime
             _errorObject = errorConstructor.Construct(new JsValue[] { message });
         }
 
+        public JavaScriptException(ErrorConstructor errorConstructor, string message, Exception innerException)
+            : base(message, innerException)
+        {
+            _errorObject = errorConstructor.Construct(new JsValue[] { message });
+        }
+
         public JavaScriptException(JsValue error)
             : base(GetErrorMessage(error))
+        {
+            _errorObject = error;
+        }
+
+        public JavaScriptException(JsValue error, Exception innerException)
+            : base(GetErrorMessage(error), innerException)
         {
             _errorObject = error;
         }

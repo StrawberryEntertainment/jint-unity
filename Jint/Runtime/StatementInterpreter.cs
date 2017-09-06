@@ -436,7 +436,7 @@ namespace Jint.Runtime
             }
             catch (JavaScriptException v)
             {
-                c = new Completion(Completion.Throw, v.Error, null);
+                c = new Completion(Completion.Throw, v.Error, null, v.InnerException);
                 c.Location = v.Location ?? s.Location;
                 return c;
             }

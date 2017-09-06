@@ -1,4 +1,5 @@
-﻿using Jint.Native;
+﻿using System;
+using Jint.Native;
 
 namespace Jint.Runtime
 {
@@ -20,9 +21,18 @@ namespace Jint.Runtime
             Identifier = identifier;
         }
 
+        public Completion(string type, JsValue value, string identifier, Exception innerException)
+        {
+            Type = type;
+            Value = value;
+            Identifier = identifier;
+            InnerException = innerException;
+        }
+
         public string Type { get; private set; }
         public JsValue Value { get; private set; }
         public string Identifier { get; private set; }
+        public Exception InnerException { get; private set; }
 
         public JsValue GetValueOrDefault()
         {

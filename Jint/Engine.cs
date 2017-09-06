@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Jint.Native;
 using Jint.Native.Argument;
 using Jint.Native.Array;
@@ -229,6 +230,19 @@ namespace Jint
             _executionContexts.Push(executionContext);
 
             return executionContext;
+        }
+
+        /// <summary>
+        /// Allows adding a lookup assembly after the engine has started. In AllowClr mode, the lookup assemblies are additionally
+        /// searched through when accessing a type in a registered namespace. Has no effect if AllowClr is false. Types without a
+        /// namespace are not made accessible. Ambigous types are matched in the order added, with the System and currently executing
+        /// assembly always coming first.
+        /// </summary>
+        /// <param name="assembly">An assembly that is loaded in the current app domain</param>
+        public void AddLookupAssembly(Assembly assembly)
+        {
+            if (!Options._LookupAssemblies.Contains(assembly))
+                Options._LookupAssemblies.Add(assembly);
         }
 
         public Engine SetValue(string name, Delegate value)

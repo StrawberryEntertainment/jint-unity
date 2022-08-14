@@ -27,6 +27,7 @@ build/
 *_i.c
 *_p.c
 *.ilk
+*.meta
 *.nupkg
 *.obj
 *.pch

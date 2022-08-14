@@ -1,0 +1,16 @@
+{
+    "name": "Jint-Unity.Repl",
+    "rootNamespace": "",
+    "references": [
+        "GUID:efb2ce99ac1a3d24898d2a12b71c30a4"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

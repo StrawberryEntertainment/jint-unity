@@ -1,7 +1,7 @@
 {
   "name": "net.strawberryentertainment.jint-unity",
   "displayName": "Fork of Jint-Unity",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "unity": "2020.3",
   "description": "Fork of Jint-Unity from https://github.com/djkrose/jint-unity to be used with UPM",
   "type": "library",

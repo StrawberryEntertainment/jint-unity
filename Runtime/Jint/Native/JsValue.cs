@@ -463,10 +463,9 @@ namespace Jint.Native
                         case "Arguments":
                         case "Object":
 #if __IOS__
-                                IDictionary<string, object> o = new Dictionary<string, object>();
+                             IDictionary<string, object> o = new Dictionary<string, object>();
 #else
-                            // IDictionary<string, object> o = new ExpandoObject(); 
-                            IDictionary<string, object> o = new Dictionary<string, object>(); //Unity has a problem with ExpandoObject and DLR :'-(
+                            IDictionary<string, object> o = new ExpandoObject(); 
 #endif
 
                             foreach (var p in (_object as ObjectInstance).GetOwnProperties())

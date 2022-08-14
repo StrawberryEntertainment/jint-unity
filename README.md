@@ -1,3 +1,5 @@
+__*Specialized fork of fork to make a UPM's package.*__
+
 __*Specialized fork to provide compatibility with .Net Framework 3.5, Unity 5.3, and djkrose's Scripting Mod.*__
 
 ---
